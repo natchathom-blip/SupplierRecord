@@ -43,8 +43,8 @@ ADMIN_PASSWORD = "admin123"
 DEFAULT_SMTP = {
     "host":     "smtp.gmail.com",
     "port":     465,
-    "user":     "your_email@gmail.com",        # ← แก้เป็นอีเมล Gmail ของคุณ
-    "password": "your_app_password_16_chars",  # ← แก้เป็น App Password 16 หลัก
+    "user":     "natchathompad@gmail.com",      # ← ใส่อีเมลจริง
+    "password": "ngxzkqhlffghvvpv",             # ← ใส่ App Password จริง
 }
 
 def get_smtp_config():
