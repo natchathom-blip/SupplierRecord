@@ -4,6 +4,7 @@ from datetime import datetime, date
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
+from email.header import Header
 from email import encoders
 import openpyxl
 import pandas as pd
@@ -22,7 +23,7 @@ except ImportError:
     HAS_MSOFFCRYPTO = False
 
 # 🔐 รหัสผ่าน Excel — แก้ตรงนี้
-EXCEL_PASSWORD = "cpram2026"
+EXCEL_PASSWORD = "cpram2024"
 
 # 🔑 รหัสผ่านสำหรับเข้าหน้า "ผู้ดูแลระบบ" — แก้ตรงนี้
 ADMIN_PASSWORD = "admin123"
@@ -42,8 +43,8 @@ ADMIN_PASSWORD = "admin123"
 DEFAULT_SMTP = {
     "host":     "smtp.gmail.com",
     "port":     465,
-    "user":     "ืnatchathompademail@gmail.com",        
-    "password": "ngxzkqhlffghvvpv",  
+    "user":     "your_email@gmail.com",        # ← แก้เป็นอีเมล Gmail ของคุณ
+    "password": "your_app_password_16_chars",  # ← แก้เป็น App Password 16 หลัก
 }
 
 def get_smtp_config():
@@ -307,7 +308,8 @@ def send_email(to_addr: str, pdf_bytes: bytes, smtp_cfg: dict) -> tuple[bool, st
         msg = MIMEMultipart()
         msg["From"]    = smtp_cfg["user"]
         msg["To"]      = to_addr
-        msg["Subject"] = "แบบสอบถามประจำวัน CPRAM – ผักสลัด"
+        # ใช้ Header() เพื่อ encode Subject ภาษาไทยเป็น UTF-8 อย่างถูกต้อง
+        msg["Subject"] = Header("แบบสอบถามประจำวัน CPRAM – ผักสลัด", "utf-8")
         msg.attach(MIMEText("กรุณาดูเอกสารแบบสอบถามที่แนบมาด้วยครับ/ค่ะ", "plain", "utf-8"))
 
         part = MIMEBase("application", "octet-stream")
@@ -324,7 +326,8 @@ def send_email(to_addr: str, pdf_bytes: bytes, smtp_cfg: dict) -> tuple[bool, st
             server.starttls()
 
         server.login(smtp_cfg["user"], smtp_cfg["password"])
-        server.sendmail(smtp_cfg["user"], to_addr, msg.as_string())
+        # ใช้ send_message() แทน sendmail() — รองรับภาษาไทยได้ดีกว่า
+        server.send_message(msg)
         server.quit()
         return True, ""
     except smtplib.SMTPAuthenticationError as e:
