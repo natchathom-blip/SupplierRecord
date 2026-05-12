@@ -3,4 +3,4 @@ reportlab
 pypdf
 openpyxl
 Pillow
-st-keyup
+
