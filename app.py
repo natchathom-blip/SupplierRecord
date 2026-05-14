@@ -209,8 +209,8 @@ def draw_text(c, text, x, y, font_size=9, max_width=None):
     else:
         c.drawString(x, y, str(text))
 
-def _draw_item_in_template(c, item, supplier, delivery_date, signer, fs=14):
-    """วาดรายการแรกลงในตำแหน่งช่องของ template (รายการที่ 1)"""
+def _draw_item_overlay(c, item, supplier, delivery_date, signer, fs=14):
+    """วาดข้อมูลรายการวัตถุดิบหนึ่งชุดบน canvas overlay (ใช้ template หน้าแรก)"""
     # Header
     draw_text(c, supplier,      220, 728, fs, max_width=230)
     draw_text(c, delivery_date, 465, 728, fs, max_width=100)
@@ -241,54 +241,10 @@ def _draw_item_in_template(c, item, supplier, delivery_date, signer, fs=14):
     draw_text(c, signer,        420, 62, fs)
     draw_text(c, delivery_date, 420, 42, fs)
 
-def _draw_extra_item_block(c, item, idx, y_top, fs=11):
-    """
-    วาดรายการที่ 2,3,... เป็นบล็อกย่อต่อท้ายในหน้าเดียวกัน
-    คืน y ของบรรทัดสุดท้ายที่วาด (ใช้คำนวณตำแหน่งของรายการถัดไป)
-    """
-    line_h = fs + 2          # ระยะห่างระหว่างบรรทัด
-    x_left = 50
-    max_w = 495
-    # หัวรายการ (ตัวหนา-เน้น)
-    title = f"รายการที่ {idx}: {item.get('material_type','')}"
-    c.setFont(FONT_NAME, fs + 1)
-    c.drawString(x_left, y_top, title)
-    y = y_top - line_h - 2
-    c.setFont(FONT_NAME, fs)
-    # บรรทัดที่ 1: code + จำนวน + สายพันธุ์
-    line1 = f"   Code: {item.get('code','')}   |   จำนวน: {item.get('quantity','')} KG   |   สายพันธุ์: {item.get('variety','')}"
-    draw_text(c, line1, x_left, y, fs, max_width=max_w); y -= line_h
-    # บรรทัดที่ 2: เก็บเกี่ยว / ล้าง
-    line2 = f"   เก็บเกี่ยว: {item.get('harvest_date','')} {item.get('harvest_time','') or ''}   |   ล้าง: {item.get('clean_date','')} {item.get('clean_time','') or ''}"
-    draw_text(c, line2, x_left, y, fs, max_width=max_w); y -= line_h
-    # บรรทัดที่ 3: ปลูก
-    line3 = f"   ลักษณะการปลูก: {item.get('growing_type','')}   |   สถานที่ปลูก: {item.get('growing_condition','')}"
-    draw_text(c, line3, x_left, y, fs, max_width=max_w); y -= line_h
-    # บรรทัดที่ 4: ผู้ปลูก / GAP / รหัสไร่
-    line4 = f"   ผู้ปลูก: {item.get('grower_name','')}   |   GAP: {item.get('gap_number','')}   |   รหัสไร่: {item.get('farm_code','')}"
-    draw_text(c, line4, x_left, y, fs, max_width=max_w); y -= line_h
-    # บรรทัดที่ 5: ที่อยู่
-    addr = " ".join(filter(None, [
-        item.get("address_no",""),
-        f"หมู่ {item.get('moo','')}" if item.get("moo","") else "",
-        item.get("subdistrict",""),
-        item.get("district",""),
-        item.get("province",""),
-        item.get("postal_code",""),
-    ]))
-    line5 = f"   ที่อยู่: {addr}"
-    draw_text(c, line5, x_left, y, fs, max_width=max_w); y -= line_h
-    # เส้นคั่น
-    c.setStrokeColorRGB(0.6, 0.6, 0.6)
-    c.setLineWidth(0.4)
-    c.line(x_left, y + 4, x_left + max_w, y + 4)
-    return y - 4
-
 def generate_pdf(form_data: dict) -> bytes:
     """
-    สร้าง PDF — รายการที่ 1 ใช้ช่องของ template
-    รายการที่ 2, 3, ... ต่อท้ายเป็นบล็อกย่อในหน้าเดียวกัน
-    ถ้าพื้นที่ไม่พอจะเปิดหน้าใหม่ (ใช้ template หน้าแรกเป็นพื้นหลัง)
+    สร้าง PDF โดย *วน loop สร้างหน้าใหม่ต่อ 1 รายการวัตถุดิบ*
+    ใช้ template.pdf หน้าแรกเป็นแม่แบบของทุกหน้ารายการ
     """
     reader = PdfReader(TEMPLATE_PATH)
     writer = PdfWriter()
@@ -298,62 +254,20 @@ def generate_pdf(form_data: dict) -> bytes:
     items         = form_data.get("items", []) or [{}]
     W, H = 595.32, 841.92
     fs = 14
-    # พื้นที่สำหรับรายการต่อท้าย (ใต้ที่อยู่ของรายการที่ 1 ลงมาถึงเหนือ footer)
-    EXTRA_START_Y   = 495       # เริ่มวาดรายการที่ 2 ตรงนี้
-    EXTRA_MIN_Y     = 110       # ไม่ให้เลยลงไปทับ footer (signer y=62)
-    EXTRA_BLOCK_H   = 88        # ความสูงโดยประมาณของแต่ละบล็อก (6 บรรทัด*13 + spacing)
-    NEW_PAGE_TOP_Y  = 750       # ในหน้าต่อ (ถ้าจำเป็น) เริ่มสูงขึ้นเพราะไม่มี item 1
-    # ── หน้าแรก: template + รายการที่ 1 ในช่อง + รายการที่ 2+ ต่อท้าย ─────────
-    overlay_buf = io.BytesIO()
-    c = canvas.Canvas(overlay_buf, pagesize=(W, H))
-    c.setFillColorRGB(0, 0, 0)
-    _draw_item_in_template(c, items[0], supplier, delivery_date, signer, fs)
-    # ----- หัวข้อแยกหมวด -----
-    if len(items) > 1:
-        c.setFont(FONT_NAME, 12)
-        c.setFillColorRGB(0.18, 0.49, 0.20)
-        c.drawString(50, EXTRA_START_Y + 10, "── รายการวัตถุดิบเพิ่มเติม ──")
+    # ── สร้าง 1 หน้า ต่อ 1 รายการวัตถุดิบ ─────────────────────────────────────
+    for item in items:
+        overlay_buf = io.BytesIO()
+        c = canvas.Canvas(overlay_buf, pagesize=(W, H))
         c.setFillColorRGB(0, 0, 0)
-    y = EXTRA_START_Y
-    next_extra_idx = 1   # index ใน items[] ของรายการถัดไปที่ยังไม่ได้วาด
-    while next_extra_idx < len(items) and (y - EXTRA_BLOCK_H) >= EXTRA_MIN_Y:
-        y = _draw_extra_item_block(c, items[next_extra_idx], next_extra_idx + 1, y, fs=11)
-        next_extra_idx += 1
-    c.save()
-    overlay_buf.seek(0)
-    overlay_reader = PdfReader(overlay_buf)
-    page1 = copy.copy(reader.pages[0])
-    page1.merge_page(overlay_reader.pages[0])
-    writer.add_page(page1)
-    # ── ถ้ายังเหลือรายการที่ใส่ไม่ลง → เปิดหน้าใหม่ (ใช้ template เป็นพื้นหลัง) ─
-    while next_extra_idx < len(items):
-        ov = io.BytesIO()
-        cc = canvas.Canvas(ov, pagesize=(W, H))
-        cc.setFillColorRGB(0, 0, 0)
-        # หัวกระดาษ (supplier + วันที่ส่ง) ของหน้าต่อ
-        draw_text(cc, supplier,      220, 728, fs, max_width=230)
-        draw_text(cc, delivery_date, 465, 728, fs, max_width=100)
-        cc.setFont(FONT_NAME, 12)
-        cc.setFillColorRGB(0.18, 0.49, 0.20)
-        cc.drawString(50, NEW_PAGE_TOP_Y, "── รายการวัตถุดิบเพิ่มเติม (ต่อ) ──")
-        cc.setFillColorRGB(0, 0, 0)
-        # footer signer
-        draw_text(cc, signer,        420, 62, fs)
-        draw_text(cc, delivery_date, 420, 42, fs)
-        y = NEW_PAGE_TOP_Y - 20
-        while next_extra_idx < len(items) and (y - EXTRA_BLOCK_H) >= EXTRA_MIN_Y:
-            y = _draw_extra_item_block(cc, items[next_extra_idx], next_extra_idx + 1, y, fs=11)
-            next_extra_idx += 1
-        cc.save()
-        ov.seek(0)
-        new_reader = PdfReader(ov)
-        # ใช้ template หน้าแรก (เปล่าๆ) เป็นพื้นหลังก็ได้ — แต่จะมี label เก่าซ้อน
-        # เพื่อความสะอาด ใช้หน้าเปล่า
-        from pypdf import PageObject
-        blank = PageObject.create_blank_page(width=W, height=H)
-        blank.merge_page(new_reader.pages[0])
-        writer.add_page(blank)
-    # ── หน้าที่เหลือของ template (ถ้ามี) เติมท้ายอีกครั้งเดียว ────────────────
+        _draw_item_overlay(c, item, supplier, delivery_date, signer, fs)
+        c.save()
+        overlay_buf.seek(0)
+        overlay_reader = PdfReader(overlay_buf)
+        # ใช้หน้าแรกของ template เป็นแม่แบบของทุกหน้ารายการ
+        page = copy.copy(reader.pages[0])
+        page.merge_page(overlay_reader.pages[0])
+        writer.add_page(page)
+    # ── หน้าที่เหลือของ template (ถ้ามี) เติมท้ายแค่ครั้งเดียว ────────────────
     for page in reader.pages[1:]:
         extra_buf = io.BytesIO()
         ec = canvas.Canvas(extra_buf, pagesize=(W, H))
@@ -409,7 +323,7 @@ with col1:
 with col2:
     delivery_date = st.date_input("วันที่ส่งวัตถุดิบ *", key="delivery_date", value=None)
 with col3:
-    delivery_time = st.time_input("เวลาส่ง", key="delivery_time", value=None, step=60)
+    delivery_time = st.text_input("เวลาส่ง (เช่น 08.00 - 09.00)", key="delivery_time", placeholder="08.00 - 09.00")
 col4, col5, col6 = st.columns([2, 2, 2])
 with col4:
     email = st.text_input("อีเมลของผู้ส่งมอบ (สำหรับรับ PDF) *", key="email")
@@ -436,12 +350,12 @@ for i, _ in enumerate(st.session_state.item_list):
     with c4:
         h_date = st.date_input("วันที่เก็บเกี่ยว", key=f"hdate_{i}", value=None)
     with c5:
-        h_time = st.time_input("เวลาเก็บเกี่ยว", key=f"htime_{i}", value=None, step=60)
+        h_time = st.text_input("เวลาเก็บเกี่ยว (เช่น 08.00 - 09.00)", key=f"htime_{i}", placeholder="08.00 - 09.00")
     with c6:
         c_date = st.date_input("วันที่ล้างทำความสะอาด", key=f"cdate_{i}", value=None)
     c7, c8, c9 = st.columns([2, 2, 2])
     with c7:
-        c_time = st.time_input("เวลาล้างทำความสะอาด", key=f"ctime_{i}", value=None, step=60)
+        c_time = st.text_input("เวลาล้างทำความสะอาด (เช่น 08.00 - 09.00)", key=f"ctime_{i}", placeholder="08.00 - 09.00")
     with c8:
         grower = st.text_input("ชื่อผู้ปลูก", key=f"grower_{i}")
     with c9:
