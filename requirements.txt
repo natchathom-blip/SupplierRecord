@@ -1,6 +1,7 @@
 streamlit
+pandas
+openpyxl
 reportlab
 pypdf
-openpyxl
+msoffcrypto-tool
 Pillow
-
